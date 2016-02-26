@@ -46,8 +46,6 @@ In this tutorial, you will:
 
 1. Setup database on Site A and Site B  
 
-	1. Perform initial data load
-
 2. Prepare Site A and Site B for database replication
 
 3. Create all necessary objects to support DDL Replication
@@ -142,10 +140,6 @@ Next, locate the INIT\<DatabaseSID\>.ORA file in the %ORACLE\_HOME%\\database fo
 
 For a full list of all Oracle GoldenGate GGSCI commands, see [Reference for Oracle GoldenGate for Windows](http://docs.oracle.com/goldengate/1212/gg-winux/GWURF/ggsci_commands.htm).
 
-### Perform initial data load
-
-You can perform the initial data load in the database by following several methods. For example, you can use the [Oracle GoldenGate Direct Load](http://docs.oracle.com/goldengate/1212/gg-winux/GWUAD/wu_initsync.htm) or regular Export and Import utilities to export table data from Site A to Site B.
-
 To demonstrate the Oracle GoldenGate replication process, this tutorial demonstrates creating a table on both Site A and site B by using the following commands.
 
 First, open up SQL\*Plus command window and run the following command to create an inventory table on Site A and Site B databases:
@@ -163,21 +157,6 @@ Next, add a constraint to the newly created table on Site A and Site B databases
 Then, grant all privileges on the new inventory table to the user ggate on Site A and Site B:
 
 	grant all on scott.inventory to ggate;
-
-Next, create and enable a database trigger, INVENTORY_CDR_TRG, on the newly created table to make sure that all transactions to the new table are recorded if the user is not ggate. Perform this operation on Site A and Site B.
-
-	CREATE OR REPLACE TRIGGER INVENTORY_CDR_TRG
-	BEFORE UPDATE
-	ON SCOTT.INVENTORY
-	REFERENCING NEW AS New OLD AS Old
-	FOR EACH ROW
-	BEGIN
-	IF SYS_CONTEXT ('USERENV', 'SESSION_USER') != 'GGATE'
-	THEN
-	:NEW.LAST_DML := SYSTIMESTAMP;
-	END IF;
-	END;
-	/
 
 
 ##2. Prepare Site A and Site B for database replication
@@ -245,12 +224,6 @@ Open Windows command window and initiate the Oracle GoldenGate command interpret
 	Windows x64 (optimized), Oracle 11g on Aug 23 2012 16:50:36
 	Copyright (C) 1995, 2012, Oracle and/or its affiliates. All rights reserved.
 
-
-Logs the GGSCI session into a database so that you can execute commands that affect the database:
-
-	GGSCI (HostName) 1> DBLOGIN USERID ggate, PASSWORD ggate
-	Successfully logged into database.
-
 Display the status and lag (where relevant) for all Manager, Extract, and Replicat processes on a system:
 
 	GGSCI (HostName) 2> info all
@@ -261,20 +234,13 @@ Open the parameter file using the EDIT PARAMS command and then append the follow
 
 	GGSCI (HostName) 3> edit params mgr
 	PORT 7809
-	USERID ggate, PASSWORD ggate
-	PURGEOLDEXTRACTS  C:\OracleGG\dirdat\ex, USECHECKPOINTS
+	PURGEOLDEXTRACTS  C:\OracleGG\dirdat\a*, USECHECKPOINTS
 
 Display the status and lag (where relevant) for all Manager, Extract, and Replicat processes on a system:
 
 	GGSCI (HostName) 46> info all
 	Program     Status      Group       Lag           Time Since Chkpt
 	MANAGER     STOPPED
-
-Logs the GGSCI session into a database so that you can execute commands that affect the database:
-
-	GGSCI (HostName) 47> dblogin USERID ggate, PASSWORD ggate
-
-	Successfully logged into database.
 
 Start the manager process:
 
@@ -290,7 +256,7 @@ Remote desktop to Site A and Site B via the Azure classic portal. Open up GGSCI 
 
 	GGSCI (MachineGG1) 14> add extract ext1 tranlog begin now
 	EXTRACT added.
-	GGSCI (MachineGG1) 4> add exttrail C:\OracleGG\dirdat\lt, extract ext1
+	GGSCI (MachineGG1) 4> add exttrail C:\OracleGG\dirdat\aa, extract ext1
 	EXTTRAIL added.
 	GGSCI (MachineGG1) 16> add extract dpump1 exttrailsource C:\OracleGG\dirdat\aa
 	EXTRACT added.
@@ -312,7 +278,6 @@ Open the parameter file using the EDIT PARAMS command and then append the follow
 
 	GGSCI (MachineGG1) 15> edit params dpump1
 	EXTRACT dpump1
-	 USERID ggate, PASSWORD ggate
 	 RMTHOST ActiveGG2orcldb, MGRPORT 7809, TCPBUFSIZE 100000
 	 RMTTRAIL C:\OracleGG\dirdat\ab
 	 PASSTHRU
@@ -348,7 +313,7 @@ This section describes how to add a REPLICAT process “REP2” on Site B.
 
 Use ADD REPLICAT command to create a Replicat group on Site B:
 
-	GGSCI (MachineGG2) 37> add replicat rep2 exttrail C:\OracleGG\dirdatab, checkpointtable ggate.checkpointtable
+	GGSCI (MachineGG2) 37> add replicat rep2 exttrail C:\OracleGG\dirdat\ab, checkpointtable ggate.checkpointtable
 
 Open the parameter file using the EDIT PARAMS command and then append the following information:
 
@@ -388,7 +353,6 @@ Open the parameter file using the EDIT PARAMS command and then append the follow
 
 	GGSCI (MachineGG2) 32> edit params dpump2
 	EXTRACT dpump2
-	USERID ggate, PASSWORD ggate
 	RMTHOST MachineGG1, MGRPORT 7809, TCPBUFSIZE 100000
 	RMTTRAIL C:\OracleGG\dirdat\ad
 	PASSTHRU
@@ -434,31 +398,6 @@ Open the parameter file using the EDIT PARAMS command and then append the follow
 	DISCARDFILE C:\OracleGG\dirdat\discard.txt, append, megabytes 10
 	MAP scott.inventory, TARGET scott.inventory;
 
-### Add trandata on Site A and Site B
-
-Enable supplemental logging at the table level by using the ADD TRANDATA command. Open up Oracle GoldenGate Command interpreter window, login to database, and then run the ADD TRANDATA command.
-
-Remote desktop to MachineGG1, open up Oracle GoldenGate command interpreter, and run:
-
-	GGSCI (MachineGG1) 11> dblogin userid ggate password ggate
-	 Successfully logged into database.
-	GGSCI (MachineGG1) 12> add trandata scott.inventory cols (prod_category,qty_in_stock, last_dml)
-	GGSCI (MachineGG1) 13> info trandata scott.inventory
-	Logging of supplemental redo log data is enabled for table SCOTT.INVENTORY.
-	Columns supplementally logged for table SCOTT.INVENTORY: PROD_ID, PROD_CATEGORY, QTY_IN_STOCK, LAST_DML.
-
-Remote desktop to MachineGG2, open up Oracle GoldenGate command interpreter, and run:
-
-	GGSCI (MachineGG2) 18> dblogin userid ggate password ggate
-	 Successfully logged into database.
-	GGSCI (MachineGG2) 14> add trandata scott.inventory cols (prod_category,qty_in_stock, last_dml)
-	Logging of supplemental redo data enabled for table SCOTT.INVENTORY.
-
-Display information about the state of table-level supplemental logging:
-
-	GGSCI (MachineGG2) 15> info trandata scott.inventory
-	Logging of supplemental redo log data is enabled for table SCOTT.INVENTORY.
-	Columns supplementally logged for table SCOTT.INVENTORY: PROD_ID, PROD_CATEGORY, QTY_IN_STOCK, LAST_DML.
 
 ###Add trandata on Site A and Site B
 
